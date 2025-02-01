@@ -1,0 +1,26 @@
+[project]
+name = "metacycle"
+version = "0.1.0"
+description = "Open-world cycling with bluetooth accessories in carla simulator."
+readme = "README.md"
+# python==3.10 required for carla==0.9.15
+requires-python = "~=3.10"
+dependencies = [
+    "bleak>=0.22.3",
+    "carla==0.9.15",
+    "pygame>=2.6.1",
+    "numpy>=2.2.2",
+    "opencv-python>=4.11.0.86",
+    "pycycling>=0.4.1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# Once published on PyPI, this tool can be installed with:
+# uv tool install metacycle
+# and then: 'metacycle'
+[project.scripts]
+metacycle = "metacycle:main"
+
