@@ -53,7 +53,7 @@ def find_weather_presets():
 def get_actor_display_name(actor, truncate=250):
     name = ' '.join(actor.type_id.replace('_', '.').title().split('.')[1:])
     return (name[:truncate - 1] + u'\u2026') if len(name) > truncate else name
-
+ 
 def get_actor_blueprints(world, filter, generation):
     bps = world.get_blueprint_library().filter(filter)
 
@@ -414,7 +414,7 @@ class BluetoothManager:
             try:
                 if not self.equipment_inputs.connected:
                     # Scan for devices
-                    devices = await BleakScanner().discover(timeout=2.0, return_adv=True)
+                    devices = await BleakScanner().discover(timeout=1.0, return_adv=True)
                     cycling_ble_devices = self.filter_cycling_accessories(devices)
                     if len(cycling_ble_devices['sterzos']) > 0 and len(cycling_ble_devices['smart_trainers']) > 0:
                         pycycling_input = PycyclingInput(
@@ -429,7 +429,7 @@ class BluetoothManager:
 
                         await pycycling_input.run_all()
 
-                await asyncio.sleep(1)
+                await asyncio.sleep(2)
             except Exception as e:
                 print(f"Bluetooth error: {e}")
                 self.equipment_inputs.connected = False
