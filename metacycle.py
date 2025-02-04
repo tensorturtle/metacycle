@@ -37,7 +37,6 @@ from pygame.locals import K_s
 from pygame.locals import K_v
 from pygame.locals import K_w
 
-
 pycycling_input = None
 
 # ==============================================================================
@@ -130,6 +129,7 @@ class RoadGradientEstimator:
         self.window_size = window_size
         self.ignore_first_n = ignore_first_n
         self.update_count = 0  # Counter for the number of updates received.
+        self.update_count = 0
         self.last_elevation = None
         self.last_time = None
         self.gradients = []
@@ -147,6 +147,7 @@ class RoadGradientEstimator:
             float: Average road gradient in percentage, or None if calculation is not possible.
         """
         self.update_count += 1  # Increment the update count.
+        self.update_count += 1
         current_time = time.time()
 
         if self.update_count > self.ignore_first_n and self.last_time is not None and speed > 0.1:
@@ -224,12 +225,14 @@ class LiveControlState:
         '''
         self.steer = steer / 150 # experimentally determined.
 
+        self.steer = steer / 150
     def update_throttle(self, watts):
         '''
         Convert watts (from BLE) to normalized (0, 1) (for CARLA)
         '''
         self.watts = watts
         self.throttle = watts / 100 # experimentally determined
+        self.throttle = watts / 100
 
     def update_speed(self, speed):
         '''
@@ -251,6 +254,8 @@ class PycyclingInput:
         on_steering_update: callback function (used to send steering angle to carla client)
         on_power_update: callback function (used to send power to carla client)
         '''
+        self.sterzo_device = sterzo_device
+        self.powermeter_device = powermeter_device
         self.sterzo_device = sterzo_device
         self.powermeter_device = powermeter_device
         self.on_steering_update = on_steering_update
@@ -765,16 +770,8 @@ class KeyboardControl(object):
                 self.world.next_weather(reverse=True)
             elif event.key == K_c:
                 self.world.next_weather()
-            elif event.key == K_r and not (pygame.key.get_mods() & KMOD_CTRL):
-                self.world.camera_manager.toggle_recording()
-
             if event.key == K_q:
                 self._control.gear = 1 if self._control.reverse else -1
-            elif event.key == K_m:
-                self._control.manual_gear_shift = not self._control.manual_gear_shift
-                self._control.gear = self.world.player.get_control().gear
-                self.world.hud.notification('%s Transmission' %
-                                        ('Manual' if self._control.manual_gear_shift else 'Automatic'))
             elif self._control.manual_gear_shift and event.key == K_COMMA:
                 self._control.gear = max(-1, self._control.gear - 1)
             elif self._control.manual_gear_shift and event.key == K_PERIOD:
@@ -856,7 +853,6 @@ class KeyboardControl(object):
 # -- HUD -----------------------------------------------------------------------
 # ==============================================================================
 
-
 class HUD():
     def __init__(self, width, height, sim_outputs, live_control_state):
         self.sim_outputs = sim_outputs
@@ -875,6 +871,13 @@ class HUD():
         self.simulation_time = 0
         self._show_info = True
         self._info_text = []
+
+        self._font_bottom_panel = pygame.font.Font(mono, 36)
+        self._bottom_panel_height = 300
+        self._bottom_panel_margin_h = 500 # horizontal margin
+        self._bottom_panel_margin_v = 70 # vertical margin
+        self._large_power_font = pygame.font.Font(mono, 144)
+
 
     def tick(self, world, clock):
         self._notifications.tick(world, clock)
@@ -904,6 +907,14 @@ class HUD():
             '',
         ]
 
+        self._bottom_panel_text = [
+            f'Power: {self.live_control_state.watts}',
+            f'Speed: {int(self.sim_outputs.speed):d} km/h',
+            f'Gradient: {int(self.sim_outputs.road_gradient):d}%',
+            f'RPM: {int(self.live_control_state.cadence):d} RPM',
+            f'Time: {str(self.sim_outputs.elapsed_time)}',
+        ]
+
     def toggle_info(self):
         self._show_info = not self._show_info
 
@@ -924,31 +935,42 @@ class HUD():
             for item in self._info_text:
                 if v_offset + 18 > self.dim[1]:
                     break
-                if isinstance(item, list):
-                    if len(item) > 1:
-                        points = [(x + 8, v_offset + 8 + (1.0 - y) * 30) for x, y in enumerate(item)]
-                        pygame.draw.lines(display, (255, 136, 0), False, points, 2)
-                    item = None
-                    v_offset += 18
-                elif isinstance(item, tuple):
-                    if isinstance(item[1], bool):
-                        rect = pygame.Rect((bar_h_offset, v_offset + 8), (6, 6))
-                        pygame.draw.rect(display, (255, 255, 255), rect, 0 if item[1] else 1)
-                    else:
-                        rect_border = pygame.Rect((bar_h_offset, v_offset + 8), (bar_width, 6))
-                        pygame.draw.rect(display, (255, 255, 255), rect_border, 1)
-                        f = (item[1] - item[2]) / (item[3] - item[2])
-                        if item[2] < 0.0:
-                            rect = pygame.Rect((bar_h_offset + f * (bar_width - 6), v_offset + 8), (6, 6))
-                        else:
-                            rect = pygame.Rect((bar_h_offset, v_offset + 8), (f * bar_width, 6))
-                        pygame.draw.rect(display, (255, 255, 255), rect)
-                    item = item[0]
                 if item:  # At this point has to be a str.
                     surface = self._font_mono.render(item, True, (255, 255, 255))
                     display.blit(surface, (8, v_offset))
                 v_offset += 18
+
+            # Calculate bottom panel dimensions with margins
+            panel_width = self.dim[0] - 2 * self._bottom_panel_margin_h
+            panel_height = self._bottom_panel_height - 2 * self._bottom_panel_margin_v
+            panel_x = self._bottom_panel_margin_h
+            panel_y = self.dim[1] - self._bottom_panel_height + self._bottom_panel_margin_v
+
+            # Render bottom panel background
+            bottom_panel_surface = pygame.Surface((panel_width, panel_height))
+            bottom_panel_surface.set_alpha(100)
+            bottom_panel_surface.fill((0, 0, 0))  # Fill with black color
+            display.blit(bottom_panel_surface, (panel_x, panel_y))
+
+            # Render power (large) on the left column
+            power_surface = self._large_power_font.render(f'{self.live_control_state.watts}W', True, (255, 255, 255))
+            power_rect = power_surface.get_rect(center=(panel_x + panel_width // 4, panel_y + panel_height // 2))
+            display.blit(power_surface, power_rect)
+
+            # Render other bottom panel text on the right column
+            right_column_x = panel_x + panel_width // 2
+            v_offset = panel_y + 20  # Start from the top of the panel
+            v_spacing = (panel_height - 40) // (len(self._bottom_panel_text) - 1)  # Subtract 1 to exclude power
+
+            for item in self._bottom_panel_text[1:]:  # Skip the power item
+                surface = self._font_bottom_panel.render(item, True, (255, 255, 255))
+                text_rect = surface.get_rect(left=right_column_x, top=v_offset)
+                display.blit(surface, text_rect)
+                v_offset += v_spacing
+
+
         self._notifications.render(display)
+
 
 
 # ==============================================================================
@@ -1147,12 +1169,13 @@ class CameraManager(object):
 # ==============================================================================
 
 class Button:
-    def __init__(self, x, y, width, height, text, font_size=20):
+    def __init__(self, x, y, width, height, text, font_size=14, callback=None):
         self.rect = pygame.Rect(x, y, width, height)
         self.text = text
         self.font = pygame.font.Font(pygame.font.get_default_font(), font_size)
         self.is_hovered = False
         self.is_pressed = False
+        self.callback = callback
 
     def handle_event(self, event):
         if event.type == pygame.MOUSEMOTION:
@@ -1160,6 +1183,8 @@ class Button:
         elif event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1 and self.is_hovered:
                 self.is_pressed = True
+                if self.callback:
+                    self.callback()
                 return True
         elif event.type == pygame.MOUSEBUTTONUP:
             self.is_pressed = False
@@ -1184,6 +1209,49 @@ class Button:
         surface.blit(text_surface, text_rect)
 
 
+class NumericInput:
+    def __init__(self, x, y, width, height, min_value, max_value, initial_value, step=1):
+        pygame.font.init()
+
+        self.rect = pygame.Rect(x, y, width, height)
+        self.min_value = min_value
+        self.max_value = max_value
+        self.value = initial_value
+        self.step = step
+        self.font = pygame.font.Font(pygame.font.get_default_font(), 24)
+        
+        button_width = height
+        self.decr_button = pygame.Rect(x, y, button_width, height)
+        self.incr_button = pygame.Rect(x + width - button_width, y, button_width, height)
+        
+    def handle_event(self, event):
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.decr_button.collidepoint(event.pos):
+                self.value = max(self.min_value, self.value - self.step)
+            elif self.incr_button.collidepoint(event.pos):
+                self.value = min(self.max_value, self.value + self.step)
+        
+    def draw(self, surface):
+        # Draw background
+        pygame.draw.rect(surface, (200, 200, 200), self.rect)
+        
+        # Draw decrement button
+        pygame.draw.rect(surface, (150, 150, 150), self.decr_button)
+        decr_text = self.font.render("-", True, (0, 0, 0))
+        surface.blit(decr_text, (self.decr_button.centerx - decr_text.get_width() // 2, 
+                                 self.decr_button.centery - decr_text.get_height() // 2))
+        
+        # Draw increment button
+        pygame.draw.rect(surface, (150, 150, 150), self.incr_button)
+        incr_text = self.font.render("+", True, (0, 0, 0))
+        surface.blit(incr_text, (self.incr_button.centerx - incr_text.get_width() // 2, 
+                                 self.incr_button.centery - incr_text.get_height() // 2))
+        
+        # Draw value
+        value_text = self.font.render(f"{self.value:.1f}%", True, (0, 0, 0))
+        value_rect = value_text.get_rect(center=self.rect.center)
+        surface.blit(value_text, value_rect)
+
 # ==============================================================================
 # -- game_loop() ---------------------------------------------------------------
 # ==============================================================================
@@ -1191,6 +1259,9 @@ class Button:
 
 def game_loop(args):
     global pycycling_input
+
+    road_gradient_offset = 0.0
+    gradient_input = NumericInput(10, args.height - 300, 200, 40, -15, 15, 0, step=0.5)
 
 
     pygame.init()
@@ -1202,6 +1273,28 @@ def game_loop(args):
 
 
     try:
+        def toggle_control_mode():
+            nonlocal keyboard_override
+            keyboard_override = not keyboard_override
+            mode = "Keyboard" if keyboard_override else "PyCycling"
+            hud.notification(f'Switched to {mode} control mode')
+
+        def toggle_camera_view():
+            world.camera_manager.toggle_camera()
+            hud.notification('Camera View Changed')
+
+        # Create buttons
+        button_width = 200
+        button_height = 40
+        button_margin = 10
+        button_x = 10
+        extra_bottom_margin = 70
+        button_y_start = args.height - (2 * button_height + button_margin + 10 + extra_bottom_margin)
+
+        toggle_control_button = Button(button_x, button_y_start, button_width, button_height, "Toggle Control Mode", callback=toggle_control_mode)
+        toggle_camera_button = Button(button_x, button_y_start + button_height + button_margin, button_width, button_height, "Toggle Camera View", callback=toggle_camera_view)
+
+            
         client = carla.Client(args.host, args.port)
         client.set_timeout(60.0)
 
@@ -1229,7 +1322,7 @@ def game_loop(args):
         pycycling_controller = PycyclingControl(world, sim_outputs, live_control_state)
 
         # Create toggle button
-        toggle_button = Button(10, args.height - 60, 200, 40, "Toggle Control Mode")
+        toggle_button = Button(10, args.height - 100, 200, 40, "Toggle Control Mode")
 
         sim_world.wait_for_tick()
 
@@ -1241,15 +1334,13 @@ def game_loop(args):
             pressed_keys = pygame.key.get_pressed()
 
             for event in pygame.event.get():
-                # event is a queue of pygame 'events' that have happened since the last call to event.get()
                 if event.type == pygame.QUIT:
                     return
-                if toggle_button.handle_event(event):
-                    keyboard_override = not keyboard_override
-                    mode = "Keyboard" if keyboard_override else "PyCycling"
-                    hud.notification(f'Switched to {mode} control mode')
+                toggle_control_button.handle_event(event)
+                toggle_camera_button.handle_event(event)
                 if controller.handle_event(event):
                     return
+                gradient_input.handle_event(event)
 
             # vehicle movement key presses
             if keyboard_override:
@@ -1258,7 +1349,7 @@ def game_loop(args):
                 pycycling_controller.step()
 
             # This should be modified by user (not implemented)
-            road_gradient_offset = 0.0
+            road_gradient_offset = gradient_input.value
             # send resistance
             if pycycling_input is not None:
                 # resistance is 0-200
@@ -1282,8 +1373,16 @@ def game_loop(args):
             world.tick(clock)
             world.render(display)
 
-            # Draw the toggle button
-            toggle_button.draw(display)
+            # Draw the buttons
+            toggle_control_button.draw(display)
+            toggle_camera_button.draw(display)
+
+            # Draw the numeric input
+            gradient_input.draw(display)
+            input_text = "Gradient Offset:"
+            text_surface = pygame.font.Font(None, 24).render(input_text, True, (255, 255, 255))
+            display.blit(text_surface, (10, args.height - 320))
+
 
             pygame.display.flip()
 
@@ -1330,8 +1429,8 @@ def main():
     argparser.add_argument(
         '--res',
         metavar='WIDTHxHEIGHT',
-        default='1280x720',
-        help='window resolution (default: 1280x720)')
+        default='1920x1080',
+        help='window resolution (default: 1920x1080)')
     argparser.add_argument(
         '--gamma',
         default=2.2,
@@ -1366,4 +1465,3 @@ def main():
 if __name__ == '__main__':
 
     main()
-
