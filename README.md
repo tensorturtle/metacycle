@@ -70,6 +70,23 @@ A list and description of the maps are available from [CARLA docs](https://carla
 
 ## FAQ
 
+### How do I upgrade to the latest version?
+
+The following command will find and install the latest published version.
+```
+uv tool upgrade metacycle
+```
+
+CARLA must be re-installed manually. Please refer to [CARLA docs](https://carla.readthedocs.io/en/latest/start_quickstart/#updating-carla)
+
+### How do I remove/uninstall the program?
+
+```
+uv tool uninstall metacycle
+```
+
+CARLA must be uninstall manually by deleting the program yourself.
+
 ### What is BLE? How do I know if my cycling accessories or computer support it?
 
 Most modern 'smart' cycling accessories communicate using Bluetooth Low Energy. It is sometimes abbreviated to 'BLE'. Bluetooth 4 may or may not support 'Low Energy', so check with the computer manufacturer. Bluetooth 5 and 6 always includes support for 'Low Energy'. Most cycling accessories are not compatible with older, non-'Low Energy' versions of Bluetooth.
