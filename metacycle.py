@@ -1344,6 +1344,21 @@ class GPXCreator:
         with open(full_path, "w") as file:
             file.write(self.to_string())
 
+
+# ==============================================================================
+# -- list_maps() ---------------------------------------------------------------
+# ==============================================================================
+
+def list_maps(carla_client):
+    try:
+        available_maps = carla_client.get_available_maps()
+        # sort maps alphabetically
+        available_maps = sorted([m.split('/')[-1] for m in available_maps])
+        return available_maps
+    except Exception as e:
+        print(f"Error getting available maps: {e}")
+        return []
+
 # ==============================================================================
 # -- game_loop() ---------------------------------------------------------------
 # ==============================================================================
@@ -1392,7 +1407,12 @@ def game_loop(args):
 
         sim_world = client.get_world()
 
-        client.load_world('Town07')
+        # client.load_world('Town07')
+
+        # Get maps and respect user's input args
+        default_map = "Town07"
+        map = args.map if args.map in list_maps(client) else default_map
+        client.load_world(map)
 
         gpx_creator = GPXCreator("finished_gpx")
         gpx_creator.set_metadata_time(f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}")
@@ -1552,6 +1572,11 @@ def main():
         default=60,
         type=int,
         help="Frame rate of monitor. Defines the max speed of (default: 60)"
+    )
+    argparser.add_argument(
+        '--map', '-m',
+        default="Town07",
+        help="Map selection. Choose from available CARLA maps."
     )
     args = argparser.parse_args()
 
