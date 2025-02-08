@@ -1268,7 +1268,79 @@ class NumericInput:
         # Draw value
         value_text = self.font.render(f"{self.value:.1f}%", True, (0, 0, 0))
         value_rect = value_text.get_rect(center=self.rect.center)
-        surface.blit(value_text, value_rect)
+        surface.blit(value_text, value_rect)\
+        
+# ==============================================================================
+# -- GPX Creator ---------------------------------------------------------------
+# ==============================================================================
+import xml.etree.ElementTree as ET
+from xml.dom import minidom
+import re
+
+class GPXCreator:
+    def __init__(self, output_dir, creator_name="Metacycle"):
+        self.output_dir = output_dir
+        self.gpx = ET.Element("gpx", {
+            "creator": creator_name,
+            "version": "1.1",
+            "xmlns": "http://www.topografix.com/GPX/1/1",
+            "xmlns:xsi": "http://www.w3.org/2001/XMLSchema-instance",
+            "xsi:schemaLocation": "http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd http://www.garmin.com/xmlschemas/GpxExtensions/v3 http://www.garmin.com/xmlschemas/GpxExtensionsv3.xsd http://www.garmin.com/xmlschemas/TrackPointExtension/v1 http://www.garmin.com/xmlschemas/TrackPointExtensionv1.xsd",
+            "xmlns:gpxtpx": "http://www.garmin.com/xmlschemas/TrackPointExtension/v1",
+            "xmlns:gpxx": "http://www.garmin.com/xmlschemas/GpxExtensions/v3"
+        })
+
+        self.metadata = ET.SubElement(self.gpx, "metadata")
+        self.trk = ET.SubElement(self.gpx, "trk")
+        self.trkseg = ET.SubElement(self.trk, "trkseg")
+
+    def set_metadata_time(self, time):
+        time_element = ET.SubElement(self.metadata, "time")
+        time_element.text = time
+
+    def set_track_info(self, name, type):
+        name_element = ET.SubElement(self.trk, "name")
+        name_element.text = name
+
+        type_element = ET.SubElement(self.trk, "type")
+        type_element.text = type
+
+    def add_trackpoint(self, lat, lon, ele, time, power=None, cadence=None):
+        trkpt = ET.SubElement(self.trkseg, "trkpt", {"lat": str(lat), "lon": str(lon)})
+        
+        ele_element = ET.SubElement(trkpt, "ele")
+        ele_element.text = str(ele)
+
+        time_element = ET.SubElement(trkpt, "time")
+        time_element.text = time
+
+        if power is not None or cadence is not None:
+            extensions = ET.SubElement(trkpt, "extensions")
+
+        if power is not None:
+            power_element = ET.SubElement(extensions, "power")
+            power_element.text = str(power)
+
+        if cadence is not None:
+            cadence_element = ET.SubElement(extensions, "cadence")
+            cadence_element.text = str(cadence)
+        
+
+
+    def to_string(self):
+        rough_string = ET.tostring(self.gpx, 'utf-8')
+        reparsed = minidom.parseString(rough_string)
+        return reparsed.toprettyxml(indent="  ")
+    
+    def sanitize_file_name(self, file_name):
+        # Replace invalid characters on windows with an underscore
+        return re.sub(r'[<>:"/\\|?*]', '_', file_name)
+
+    def save_to_file(self, file_name):
+        sanitized_name = self.sanitize_file_name(file_name)
+        full_path = os.path.join(self.output_dir, sanitized_name)
+        with open(full_path, "w") as file:
+            file.write(self.to_string())
 
 # ==============================================================================
 # -- game_loop() ---------------------------------------------------------------
@@ -1320,6 +1392,10 @@ def game_loop(args):
 
         client.load_world('Town07')
 
+        gpx_creator = GPXCreator("finished_gpx")
+        gpx_creator.set_metadata_time(f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}")
+        gpx_creator.set_track_info("Virtual Cycling Activity in Metacycle", "VirtualRide")
+
         display = pygame.display.set_mode(
             (args.width, args.height),
             pygame.HWSURFACE | pygame.DOUBLEBUF | pygame.SCALED | pygame.RESIZABLE)
@@ -1347,6 +1423,8 @@ def game_loop(args):
         clock = pygame.time.Clock()
 
         keyboard_override = False
+
+        gpx_frame_counter = 0
         while True:
             clock.tick_busy_loop(args.max_fps)
             pressed_keys = pygame.key.get_pressed()
@@ -1379,11 +1457,6 @@ def game_loop(args):
                 gradient = max(0, gradient)
                 gradient = min(15, gradient)
 
-                # if gradient < 0:
-                #     gradient = 0
-                # elif gradient > 15:
-                #     gradient = 15
-
                 pycycling_input.ftms_desired_resistance = (gradient * 200 / 15) # 200 is maximum resistance, 15 is maximum gradient
                 pycycling_input.ftms_desired_resistance += (sim_outputs.speed * 1.3) # wind resistance estimate based on speed. Magic number empirically determined. Should be exposed to user as a preference.
 
@@ -1404,7 +1477,25 @@ def game_loop(args):
 
             pygame.display.flip()
 
+            gpx_frame_counter += 1
+            if gpx_frame_counter % 60 == 0: # don't create a GPX point for every frame, it messes up strava
+                # Match it to be basically 1Hz
+                # North-south offsets change the distance travelled, so stick to places close to the equator.
+                gnss_offset = (-0.849541, -91.104870) # Galapagos islands
+
+                gpx_creator.add_trackpoint(
+                    sim_outputs.gnss[0] + gnss_offset[0],
+                    sim_outputs.gnss[1] + gnss_offset[1],
+                    sim_outputs.height,
+                    f"{time.strftime('%Y-%m-%dT%H:%M:%S', time.gmtime())}.{int(time.time() * 1000 % 1000)}Z", # we need millisecond precision because there are multiple trackpoints per second. Using seconds causes speed calculation problems in Strava.
+                    live_control_state.watts or None, # uses OR short-circuiting
+                    live_control_state.cadence or None,
+                )
+                gpx_frame_counter = 0
+
     finally:
+        gpx_creator.save_to_file(f"metacycle_ride_{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}.gpx")
+
         if bluetooth_manager:
             bluetooth_manager.stop()
 
