@@ -1340,7 +1340,7 @@ class GPXCreator:
 
     def save_to_file(self, file_name):
         sanitized_name = self.sanitize_file_name(file_name)
-        full_path = os.path.join(self.output_dir, sanitized_name)
+        full_path = os.path.normpath(os.path.join(self.output_dir, sanitized_name))
         with open(full_path, "w") as file:
             file.write(self.to_string())
 
