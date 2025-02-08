@@ -56,6 +56,13 @@ Launch metacycle
 metacycle
 ```
 
+You can pass in a `--map ` argument from available CARLA maps. For example:
+```
+metacycle --map Town10HD
+```
+A list and description of the maps are available from [CARLA docs](https://carla.readthedocs.io/en/latest/core_map/#carla-maps)
+
+
 ## Read More
 
 + [STORY.md](STORY.md) - The history of this project.
