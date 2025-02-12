@@ -72,6 +72,11 @@ A list and description of the maps are available from [CARLA docs](https://carla
 
 ### How do I upgrade to the latest version?
 
+Sometimes, the cache needs to be cleared in order to get the latest version.
+```
+uv cache clean
+```
+
 The following command will find and install the latest published version.
 ```
 uv tool upgrade metacycle
