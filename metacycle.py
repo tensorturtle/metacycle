@@ -1106,7 +1106,7 @@ class CameraManager(object):
             # x is 'meters in front of rider'
             # z is 'meters from ground above rider'
             (carla.Transform(carla.Location(x=-3.5, z=2.5), carla.Rotation(pitch=20.0)), Attachment.SpringArmGhost),
-            (carla.Transform(carla.Location(x=0.1, z=1.2), carla.Rotation(pitch=-92.0, yaw=180.0)), Attachment.SpringArmGhost),
+            (carla.Transform(carla.Location(x=0.1, z=1.2), carla.Rotation(pitch=0)), Attachment.Rigid),
 
         ]
         self.transform_index = 0
