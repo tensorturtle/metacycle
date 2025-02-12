@@ -1339,10 +1339,35 @@ class GPXCreator:
         return re.sub(r'[<>:"/\\|?*]', '_', file_name)
 
     def save_to_file(self, file_name):
+        # Get the user's home directory in a cross-platform way
+        home_dir = os.path.expanduser("~")
+        
+        # Define Downloads path based on OS
+        if os.name == "nt":  # Windows
+            downloads_dir = os.path.join(home_dir, "Downloads")
+        else:  # Linux, macOS, etc.
+            downloads_dir = os.path.join(home_dir, "Downloads")  # Most Unix systems use "Downloads"
+            if not os.path.exists(downloads_dir):  # Fallback for systems using XDG
+                try:
+                    import subprocess
+                    xdg_dir = subprocess.check_output(["xdg-user-dir", "DOWNLOAD"]).decode().strip()
+                    if os.path.exists(xdg_dir):
+                        downloads_dir = xdg_dir
+                except (subprocess.SubprocessError, FileNotFoundError):
+                    pass  # Stick with default Downloads directory if XDG lookup fails
+        
+        # Create Downloads directory if it doesn't exist
+        os.makedirs(downloads_dir, exist_ok=True)
+        
         sanitized_name = self.sanitize_file_name(file_name)
-        full_path = os.path.normpath(os.path.join(self.output_dir, sanitized_name))
+        full_path = os.path.normpath(os.path.join(downloads_dir, sanitized_name))
+        
         with open(full_path, "w") as file:
             file.write(self.to_string())
+        
+        print(f"Ride saved to {full_path} - you can upload this to Strava!")
+        
+        return full_path  # Return the path so the caller knows where the file was saved
 
 
 # ==============================================================================

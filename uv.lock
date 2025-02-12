@@ -107,7 +107,7 @@ wheels = [
 
 [[package]]
 name = "metacycle"
-version = "0.1.2"
+version = "0.1.4"
 source = { editable = "." }
 dependencies = [
     { name = "bleak" },
