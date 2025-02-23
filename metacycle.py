@@ -30,7 +30,7 @@ from pygame.locals import K_b
 from pygame.locals import K_c
 from pygame.locals import K_d
 from pygame.locals import K_l
-from pygame.locals import K_m
+from pygame.locals import K_p
 from pygame.locals import K_q
 from pygame.locals import K_r
 from pygame.locals import K_s
@@ -760,6 +760,10 @@ class KeyboardControl(object):
         self.world = world
         self._steer_cache = 0.0
         self.world.player.set_light_state(self._lights)
+        self._snapshot_callback = None
+
+    def set_snapshot_callback(self, callback):
+        self._snapshot_callback = callback
 
 
     def handle_event(self, event):
@@ -770,6 +774,9 @@ class KeyboardControl(object):
         elif event.type == pygame.KEYUP:
             if self._is_quit_shortcut(event.key):
                 return True
+            elif event.key == K_p:
+                if self._snapshot_callback is not None:
+                    self._snapshot_callback()
             elif event.key == K_BACKSPACE:
                 self.world.restart()
             elif event.key == K_F1:
@@ -1395,6 +1402,34 @@ def game_loop(args):
     road_gradient_offset = 0.0
     gradient_input = NumericInput(10, args.height - 300, 200, 40, -15, 15, 0, step=0.5)
 
+    def take_snapshot():
+        # Get the current display surface
+        screenshot = display.copy()
+        
+        # Get the user's downloads directory
+        home_dir = os.path.expanduser("~")
+        if os.name == "nt":  # Windows
+            downloads_dir = os.path.join(home_dir, "Downloads")
+        else:  # Linux, macOS, etc.
+            downloads_dir = os.path.join(home_dir, "Downloads")
+            if not os.path.exists(downloads_dir):
+                try:
+                    import subprocess
+                    xdg_dir = subprocess.check_output(["xdg-user-dir", "DOWNLOAD"]).decode().strip()
+                    if os.path.exists(xdg_dir):
+                        downloads_dir = xdg_dir
+                except (subprocess.SubprocessError, FileNotFoundError):
+                    pass
+        
+        # Create filename with timestamp
+        timestamp = time.strftime("%Y%m%d-%H%M%S")
+        filename = f"metacycle_snapshot_{timestamp}.png"
+        filepath = os.path.join(downloads_dir, filename)
+        
+        # Save the screenshot
+        pygame.image.save(screenshot, filepath)
+        hud.notification(f"Screenshot saved to Downloads")
+
 
     pygame.init()
     pygame.font.init()
@@ -1415,26 +1450,29 @@ def game_loop(args):
             world.camera_manager.toggle_camera()
             hud.notification('Camera View Changed')
 
-        # Create buttons
+        # Create buttons (update the positioning)
         button_width = 200
         button_height = 40
         button_margin = 10
         button_x = 10
         extra_bottom_margin = 70
-        button_y_start = args.height - (2 * button_height + button_margin + 10 + extra_bottom_margin)
+        button_y_start = args.height - (3 * button_height + 2 * button_margin + 10 + extra_bottom_margin)
 
-        toggle_control_button = Button(button_x, button_y_start, button_width, button_height, "Toggle Control Mode", callback=toggle_control_mode)
-        toggle_camera_button = Button(button_x, button_y_start + button_height + button_margin, button_width, button_height, "Toggle Camera View", callback=toggle_camera_view)
-
+        take_snapshot_button = Button(button_x, button_y_start, button_width, button_height, 
+                                    "Take Snapshot (p)", callback=take_snapshot)
+        toggle_control_button = Button(button_x, button_y_start + button_height + button_margin, 
+                                    button_width, button_height, "Toggle Control Mode ()", 
+                                    callback=toggle_control_mode)
+        toggle_camera_button = Button(button_x, button_y_start + 2 * (button_height + button_margin), 
+                                    button_width, button_height, "Toggle Camera View (Tab)", 
+                                    callback=toggle_camera_view)
             
         client = carla.Client(args.host, args.port)
         client.set_timeout(60.0)
 
         sim_world = client.get_world()
 
-        # client.load_world('Town07')
-
-        # Get maps and respect user's input args
+        # use --maps arg. TODO: GUI selector for map
         default_map = "Town07"
         map = args.map if args.map in list_maps(client) else default_map
         client.load_world(map)
@@ -1460,10 +1498,11 @@ def game_loop(args):
         hud = HUD(args.width, args.height, sim_outputs, live_control_state)
         world = World(sim_world, hud, sim_outputs, args)
         controller = KeyboardControl(world)
+        controller.set_snapshot_callback(take_snapshot)
         pycycling_controller = PycyclingControl(world, sim_outputs, live_control_state)
 
         # Create toggle button
-        toggle_button = Button(10, args.height - 100, 200, 40, "Toggle Control Mode")
+        # toggle_button = Button(10, args.height - 100, 200, 40, "Toggle Control Mode")
 
         sim_world.wait_for_tick()
 
@@ -1479,6 +1518,7 @@ def game_loop(args):
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     return
+                take_snapshot_button.handle_event(event)  # Add this line
                 toggle_control_button.handle_event(event)
                 toggle_camera_button.handle_event(event)
                 if controller.handle_event(event):
@@ -1512,6 +1552,7 @@ def game_loop(args):
             world.render(display)
 
             # Draw the buttons
+            take_snapshot_button.draw(display)
             toggle_control_button.draw(display)
             toggle_camera_button.draw(display)
 

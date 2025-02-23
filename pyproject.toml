@@ -1,6 +1,6 @@
 [project]
 name = "metacycle"
-version = "0.1.5"
+version = "0.1.6"
 description = "Open-world cycling with bluetooth accessories in carla simulator."
 readme = "README.md"
 # python==3.10 required for carla==0.9.15
