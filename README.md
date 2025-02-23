@@ -1,6 +1,6 @@
 # metacycle
 
-**Metacycle** is an open source cycling simulator. It pairs with smart indoor cycling accessories to offer the highest degree of in-game control and feedback, providing the ultimate interactive indoor cycling experience.
+**Metacycle** is an open source cycling simulator. It pairs with smart indoor cycling accessories to offer the highest degree of in-game control and feedback.
 
 `metacycle` is to **Zwift** as **Project Cars** is to **Mario Kart**.
 
