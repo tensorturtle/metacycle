@@ -10,6 +10,7 @@ import random
 import re
 import weakref
 import numpy as np
+import cv2
 import pygame
 
 from pygame.locals import KMOD_CTRL
@@ -500,6 +501,9 @@ class World(object):
         self._actor_filter = 'vehicle.diamondback.century'
         self._actor_generation = '2'
         self._gamma = args.gamma
+        self._sensor_dim = (args.sensor_width, args.sensor_height)
+        self._upscale_filter = args.upscale_filter
+        self._softening = args.softening
         self.restart()
         self.world.on_tick(self.on_world_tick)
         self.recording_enabled = False
@@ -572,7 +576,9 @@ class World(object):
         # Set up the sensors.
         self.gnss_sensor = GnssSensor(self.player)
         self.imu_sensor = IMUSensor(self.player)
-        self.camera_manager = CameraManager(self.player, self.hud, self._gamma)
+        self.camera_manager = CameraManager(self.player, self.hud, self._gamma,
+                                            self._sensor_dim, self._upscale_filter,
+                                            self._softening)
         self.camera_manager.transform_index = cam_pos_index
         self.camera_manager.set_sensor(cam_index, notify=False)
         actor_type = get_actor_display_name(self.player)
@@ -1101,11 +1107,31 @@ class IMUSensor(object):
 
 
 class CameraManager(object):
-    def __init__(self, parent_actor, hud, gamma_correction):
+    # Interpolation filters available for upscaling the camera image to the
+    # window, worst-to-best (and cheapest-to-priciest): nearest is blocky,
+    # linear (bilinear) is smooth but soft, cubic is sharper, lanczos sharpest.
+    UPSCALE_FILTERS = {
+        'nearest': cv2.INTER_NEAREST,
+        'linear': cv2.INTER_LINEAR,
+        'cubic': cv2.INTER_CUBIC,
+        'lanczos': cv2.INTER_LANCZOS4,
+    }
+
+    def __init__(self, parent_actor, hud, gamma_correction, sensor_dim=None,
+                 upscale_filter='cubic', softening=0.0):
         self.sensor = None
         self.surface = None
         self._parent = parent_actor
         self.hud = hud
+        # Resolution the camera sensor renders at on the CARLA server. Kept
+        # separate from the window size (hud.dim) so we can render fewer pixels
+        # on the (GPU-bound) server and upscale on the client. Defaults to the
+        # window size when not specified.
+        self._sensor_dim = sensor_dim if sensor_dim is not None else hud.dim
+        self._upscale_interp = self.UPSCALE_FILTERS[upscale_filter]
+        # Gaussian blur sigma applied to the final image to soften the hard,
+        # aliased edges of a low-quality CARLA render. 0 disables it.
+        self._softening = softening
         self.recording = False
         Attachment = carla.AttachmentType
 
@@ -1126,8 +1152,8 @@ class CameraManager(object):
         for item in self.sensors:
             bp = bp_library.find(item[0])
             if item[0].startswith('sensor.camera'):
-                bp.set_attribute('image_size_x', str(hud.dim[0]))
-                bp.set_attribute('image_size_y', str(hud.dim[1]))
+                bp.set_attribute('image_size_x', str(self._sensor_dim[0]))
+                bp.set_attribute('image_size_y', str(self._sensor_dim[1]))
                 if bp.has_attribute('gamma'):
                     bp.set_attribute('gamma', str(gamma_correction))
                 for attr_name, attr_value in item[3].items():
@@ -1185,8 +1211,24 @@ class CameraManager(object):
         array = np.frombuffer(image.raw_data, dtype=np.dtype("uint8"))
         array = np.reshape(array, (image.height, image.width, 4))
         array = array[:, :, :3]
-        array = array[:, :, ::-1]
-        self.surface = pygame.surfarray.make_surface(array.swapaxes(0, 1))
+        # Resize the server-rendered frame to the window size. Done here (once
+        # per server frame) rather than in render() (once per client frame)
+        # since the image only changes on server ticks. Filter depends on
+        # direction: downscaling (sensor res > window) is supersampling
+        # anti-aliasing, best served by area averaging; upscaling uses the
+        # user-selected interpolation filter.
+        win_w, win_h = self.hud.dim
+        if (image.width, image.height) != (win_w, win_h):
+            downscaling = image.width > win_w or image.height > win_h
+            interp = cv2.INTER_AREA if downscaling else self._upscale_interp
+            array = cv2.resize(array, (win_w, win_h), interpolation=interp)
+        # Soften the hard, aliased edges of the (typically low-quality) CARLA
+        # render with a Gaussian blur. ksize=(0,0) derives the kernel from sigma.
+        if self._softening > 0:
+            array = cv2.GaussianBlur(array, (0, 0), self._softening)
+        array = array[:, :, ::-1]  # BGR -> RGB
+        surface = pygame.surfarray.make_surface(array.swapaxes(0, 1))
+        self.surface = surface
         if self.recording:
             image.save_to_disk('_out/%08d' % image.frame)
 
@@ -1473,14 +1515,31 @@ def game_loop(args):
         sim_world = client.get_world()
 
         # use --maps arg. TODO: GUI selector for map
+        # Town10HD is in every base install; used as a fallback when the
+        # requested map (e.g. Town07, which needs the additional-maps pack)
+        # isn't present on the server.
         default_map = "Town10HD"
         map = args.map if args.map in list_maps(client) else default_map
-        client.load_world(map)
+        # Only reload the world when the server isn't already on the requested
+        # map. load_world() forces a full teardown/rebuild; doing that again
+        # against a long-running server (e.g. relaunching metacycle while CARLA
+        # keeps running) crashes it in the landscape render system — an async
+        # LOD task dereferences a terrain texture freed during the reload
+        # (SIGSEGV in FLandscapeRenderSystem / UTexture2D::GetNumResidentMips).
+        current_map = sim_world.get_map().name.split('/')[-1]
+        if current_map != map:
+            sim_world = client.load_world(map)
 
         gpx_creator = GPXCreator("finished_gpx")
         gpx_creator.set_metadata_time(f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}")
         gpx_creator.set_track_info("Virtual Cycling Activity in Metacycle", "VirtualRide")
 
+        # The SCALED flag scales our logical (args.width x args.height) surface
+        # to the physical window/monitor. SDL defaults to nearest-neighbour for
+        # that scale, which looks blocky whenever the monitor doesn't match the
+        # logical size (e.g. running 1080p on a smaller screen). Request linear
+        # filtering so the scale is smooth. Must be set before set_mode().
+        os.environ.setdefault('SDL_HINT_RENDER_SCALE_QUALITY', '1')
         display = pygame.display.set_mode(
             (args.width, args.height),
             pygame.HWSURFACE | pygame.DOUBLEBUF | pygame.SCALED | pygame.RESIZABLE)
@@ -1641,12 +1700,39 @@ def main():
     )
     argparser.add_argument(
         '--map', '-m',
-        default="Town10HD",
-        help="Map selection. Choose from available CARLA maps."
+        default="Town07",
+        help="Map selection. Choose from available CARLA maps. Town07 is much "
+             "lighter on the server GPU than Town10HD (default: Town07). Note: "
+             "Town07 ships in CARLA's *additional maps* pack, not the base build."
     )
+    argparser.add_argument(
+        '--sensor-res',
+        metavar='WIDTHxHEIGHT',
+        default='1280x720',
+        help='camera sensor render resolution, then resized to the window '
+             '(default: 1280x720). Below the window size eases the CARLA server '
+             'GPU load (upscaled on the client). Above the window size acts as '
+             'supersampling anti-aliasing (downsampled with area averaging). '
+             'Set equal to --res to render the camera at full window resolution.')
+    argparser.add_argument(
+        '--upscale-filter',
+        default='cubic',
+        choices=list(CameraManager.UPSCALE_FILTERS.keys()),
+        help='interpolation filter used when upscaling the camera image to the '
+             'window: nearest (blocky), linear (smooth/soft), cubic (sharper), '
+             'lanczos (sharpest) (default: cubic). Ignored when supersampling '
+             '(--sensor-res above --res), which always uses area averaging.')
+    argparser.add_argument(
+        '--softening',
+        default=0.0,
+        type=float,
+        help='Gaussian blur sigma applied to the camera image to soften the '
+             'hard, aliased edges of a low-quality CARLA render (0 = off, try '
+             '1.0-2.5). This is a post-blur, not true anti-aliasing (default: 0).')
     args = argparser.parse_args()
 
     args.width, args.height = [int(x) for x in args.res.split('x')]
+    args.sensor_width, args.sensor_height = [int(x) for x in args.sensor_res.split('x')]
 
     log_level = logging.DEBUG if args.debug else logging.INFO
     logging.basicConfig(format='%(levelname)s: %(message)s', level=log_level)
