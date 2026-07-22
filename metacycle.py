@@ -1473,7 +1473,7 @@ def game_loop(args):
         sim_world = client.get_world()
 
         # use --maps arg. TODO: GUI selector for map
-        default_map = "Town07"
+        default_map = "Town10HD"
         map = args.map if args.map in list_maps(client) else default_map
         client.load_world(map)
 
@@ -1641,7 +1641,7 @@ def main():
     )
     argparser.add_argument(
         '--map', '-m',
-        default="Town07",
+        default="Town10HD",
         help="Map selection. Choose from available CARLA maps."
     )
     args = argparser.parse_args()

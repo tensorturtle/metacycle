@@ -120,8 +120,9 @@ The entire application is contained in `metacycle.py` (~1670 lines). This is int
 
 ## Important Notes
 
-- Python 3.10 is strictly required due to CARLA 0.9.15 dependency
-- CARLA Simulator must be running separately before launching metacycle
+- The `carla` client version must match the running CARLA **server** version — a mismatch crashes the native client with `std::bad_alloc`. CARLA supports Python 3.7–3.12, so pin the client to your server: install from PyPI (`pip install carla==<server-version>`) for released versions, or install the wheel bundled in the package's `PythonAPI/carla/dist/` for custom/source builds. (This repo pins `carla` in `pyproject.toml`.)
+- The default map is `Town07`, which ships only in CARLA's *additional maps* pack. Base packages include Town01–05 and Town10HD; pass e.g. `--map Town10HD` if Town07 isn't installed
+- CARLA Simulator must be running separately before launching metacycle. Start it via `~/Carla/CarlaUE4.sh` (the recommended install location)
 - Bluetooth Low Energy (BLE) support required - not ANT+
 - On Linux, the app automatically restarts system bluetooth on startup to handle ungraceful shutdowns
 - The application uses `uv` as package manager (not pip or poetry)

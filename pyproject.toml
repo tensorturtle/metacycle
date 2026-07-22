@@ -7,7 +7,7 @@ readme = "README.md"
 requires-python = "~=3.10"
 dependencies = [
     "bleak>=0.22.3",
-    "carla==0.9.15",
+    "carla==0.9.16",
     "pygame>=2.6.1",
     "numpy>=2.2.2",
     "opencv-python>=4.11.0.86",

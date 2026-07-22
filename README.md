@@ -12,7 +12,9 @@ In other words, it's a serious simulator, not an arcade game. Metacycle has life
 1. Your Bike
 2. Smart steering plate
 3. Smart Trainer
-4. Gaming computer running Windows 10+ or Ubuntu 22.04+
+4. Gaming computer running Windows 10+ or Ubuntu 20.04 / 22.04
+
+> **Linux/Ubuntu version matters.** CARLA (UE4 4.26) is only supported on Ubuntu 20.04 and 22.04. It does **not** run on Ubuntu 24.04 / Pop!_OS 24.04: the newer glibc (2.39) makes the CARLA server crash on startup with heap corruption (`malloc(): unsorted double linked list corrupted`, Signal 6) or an intermittent `Signal 11` segfault. Use 20.04/22.04, or run the CARLA server in a container based on a supported Ubuntu (see Troubleshooting).
 
 Currently, the only smart steering plate on the market is [Elite Sterzo](https://www.elite-it.com/en/products/home-trainers/ecosystem-accessories/sterzo-smart). Any smart trainer supporting Bluetooth FTMS by Elite, JetBlack, Wahoo, Tacx, etc. are compatible.
 
@@ -27,6 +29,8 @@ Download [Carla Simulator 0.9.15](https://github.com/carla-simulator/carla/relea
 #### Windows
 
 Open the downloaded ZIP file. Uncompress it to a location of your choice and find `CarlaUE4.exe`. Double click to launch it.
+
+> **Note:** On a brand-new Windows installation, the first launch may prompt you to install DirectX. Accept and complete that install, then launch CARLA again.
 
 #### Linux (Ubuntu)
 
@@ -111,5 +115,24 @@ Metacycle is based Unreal Engine 4, a serious 3D game engine with full customiza
 + Internet connection required for installation, not required to run the game.
 
 There is work being done upstream (in Carla) to upgrade to Unreal Engine 5, which will have potentially higher system requirements (16GB+ VRAM)
+
+## Troubleshooting
+
+### CARLA server crashes on startup (Ubuntu 24.04 / newer glibc)
+
+Symptoms: `./CarlaUE4.sh` dies during startup with `malloc(): unsorted double linked list corrupted` (Signal 6) or an intermittent `Signal 11` segfault. This is **not** a GPU problem — it's a binary-compatibility issue. CARLA (UE4 4.26) is built for Ubuntu 20.04/22.04 and is incompatible with the glibc 2.39 shipped in Ubuntu 24.04 / Pop!_OS 24.04.
+
+Options:
+1. **Use Ubuntu 20.04 or 22.04** (recommended — this is what CARLA officially supports). The native install then works as documented above.
+2. **Run the CARLA server in Docker** on a supported base image, keeping the metacycle client on the host:
+   ```bash
+   docker run --rm -d --name carla --gpus all --net=host \
+     carlasim/carla:0.9.16 ./CarlaUE4.sh -RenderOffScreen -nosound
+   ```
+   This requires Docker + the NVIDIA Container Toolkit. Note: Docker 29.x has a CDI/GPU-passthrough regression on Ubuntu 24.04 — if `--gpus all` fails with "no known GPU vendor found" / "unresolvable CDI devices", use Docker 28.x or the classic `--runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=all` instead.
+
+### Map 'Town07' not found
+
+The default map requires CARLA's *additional maps* pack. Base packages ship Town01–05 and Town10HD. Either install the additional maps (place `AdditionalMaps_<ver>.tar.gz` in the CARLA package's `Import/` folder and run `./ImportAssets.sh`), or pass an available map, e.g. `--map Town10HD`.
 
 
