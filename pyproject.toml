@@ -3,8 +3,8 @@ name = "metacycle"
 version = "0.1.6"
 description = "Open-world cycling with bluetooth accessories in carla simulator."
 readme = "README.md"
-# python==3.10 required for carla==0.9.15
-requires-python = "~=3.10"
+# CARLA 0.9.16 ships wheels only for CPython 3.10, 3.11, 3.12 (Linux/Windows).
+requires-python = ">=3.10,<3.13"
 dependencies = [
     "bleak>=0.22.3",
     "carla==0.9.16",

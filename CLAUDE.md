@@ -8,7 +8,7 @@ Metacycle is an open-source cycling simulator that pairs with smart indoor cycli
 
 **Key Technologies:**
 - CARLA Simulator 0.9.15 (Unreal Engine 4 based)
-- Python 3.10 (required for CARLA compatibility)
+- Python 3.10–3.12 (CARLA 0.9.16 ships wheels only for CPython 3.10/3.11/3.12; 3.12 recommended)
 - Pygame for rendering and UI
 - Bleak for Bluetooth Low Energy communication
 - Pycycling for cycling equipment protocols (FTMS, Sterzo)
@@ -18,8 +18,8 @@ Metacycle is an open-source cycling simulator that pairs with smart indoor cycli
 ### Setup
 ```bash
 # Install UV package manager first (see https://docs.astral.sh/uv/getting-started/installation/)
-uv python install 3.10
-uv run --python 3.10 metacycle
+uv python install 3.12
+uv run --python 3.12 metacycle
 ```
 
 ### Running the Application
@@ -33,22 +33,22 @@ uv run --python 3.10 metacycle
 
 # 2. metacycle — Town07 (light on the server), softening=1.0 to take the edge
 #    off the low-quality render's aliasing.
-uv run --python 3.10 metacycle.py --map Town07 --softening=1.0
+uv run --python 3.12 metacycle.py --map Town07 --softening=1.0
 ```
 
 Other examples:
 ```bash
 # Run with default map (Town07)
-uv run --python 3.10 metacycle
+uv run --python 3.12 metacycle
 
 # Run with specific map
-uv run --python 3.10 metacycle --map Town10HD
+uv run --python 3.12 metacycle --map Town10HD
 
 # Run with custom resolution
-uv run --python 3.10 metacycle --res 2560x1440
+uv run --python 3.12 metacycle --res 2560x1440
 
 # Run with custom FPS limit
-uv run --python 3.10 metacycle --max-fps 120
+uv run --python 3.12 metacycle --max-fps 120
 ```
 
 ### Building and Publishing
